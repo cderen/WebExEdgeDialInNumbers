@@ -106,12 +106,12 @@ def main():
 
     customer = input("Enter customer webex site name:")
     route_list = input("Enter Route List name for webex edge audio:")
-    code_dict = get_country_code()
 
     try:
         customer_url = requests.get(f'https://{customer}.webex.com/{customer}/globalcallin.php',timeout=2)
         soup = BeautifulSoup(customer_url.content, 'html.parser')
         dial_in_numbers = parse_soup(customer, soup)
+        code_dict = get_country_code()
         generate_axl_file(dial_in_numbers, route_list, code_dict)
     except:
         print("Webex site does not exist")
