@@ -3,12 +3,29 @@ import requests
 import re
 import csv
 
+
+def get_country_code():
+    'API call to find country codes for different countries'
+    code_dict = {}
+    try:
+        print('\nPulling country codes from internet API...')
+        code_site = requests.get('https://restcountries.eu/rest/v2/all', timeout=2)
+        #code_site = requests.get(f'https://restcountries.eu/rest/v2/name/poland', timeout=2)
+        code_json = code_site.json()
+        for i in code_json:
+            #print(i['name'], i['callingCodes'])
+            code_dict[i['name'].lower()] = (str(i['callingCodes'])).replace('[', '').replace(']','').replace("'", '')
+    except:
+        print('Country code lookup API unavailable.')
+    return code_dict
+
 def parse_soup(customer, soup):
     # define regex for compliling dial in numbers URL
     pattern1 = re.compile("(var theUrl =) \'(.*)\'")
     pattern2 = re.compile("(/webcomponents)(.*)")
     pattern3 = re.compile("(siteurl=)(.*)")
 
+    print('Pulling webex dial-in numbers from internet Cisco API...')
     url1 = re.search(pattern1, soup.text).group(2)
     url2 = re.search(pattern2, soup.text).group(1) + re.search(pattern2, soup.text).group(2).replace("?'", "?")
     url3 = re.search(pattern3, soup.text).group(1) + re.search(pattern3, soup.text).group(2).replace("';", "")
@@ -31,7 +48,7 @@ def parse_soup(customer, soup):
     return dial_in_numbers
 
 
-def generate_axl_file(dial_in_numbers, route_list):
+def generate_axl_file(dial_in_numbers, route_list, code_dict):
     file_name = "webedxedge_route_patterns.tsv"
     with open(file_name, 'w') as file:
 
@@ -68,7 +85,11 @@ def generate_axl_file(dial_in_numbers, route_list):
             if str(i[1]).startswith('+'):
                 pattern = "\\" + i[1]
             else:
-                pattern = '\\+' + i[1]
+                country = i[0].replace(' Toll','').replace(' Free','')
+                if country.lower() in code_dict:
+                    pattern = '\\+' + code_dict[country.lower()] + i[1]
+                else:
+                    pattern = '\\+' + i[1]
             pattern = pattern.replace(" ", "").replace("-", "")
 
             rp_dict["Route Pattern"] = pattern
@@ -76,20 +97,25 @@ def generate_axl_file(dial_in_numbers, route_list):
             rp_dict["Route List"] = route_list
 
             writer.writerow(rp_dict)
-        print(f"\nSucessfully created {file_name} AXL input file. Some patterns may need to be adjusted with proper country codes.")
+        print(f"\nSucessfully created {file_name} AXL input file. Some patterns were adjusted to include country codes, this process is not perfect so review the AXL input file for accuracy.")
 
 
 def main():
+    version = '1.1'
+    print(f'Webex Dial-in numbers lookup tool, version {version}.\nThe tool requires internet access as it pulls data from several websites.  For questions contact chris.deren@cdw.com\n')
+
     customer = input("Enter customer webex site name:")
     route_list = input("Enter Route List name for webex edge audio:")
+    code_dict = get_country_code()
 
     try:
         customer_url = requests.get(f'https://{customer}.webex.com/{customer}/globalcallin.php',timeout=2)
         soup = BeautifulSoup(customer_url.content, 'html.parser')
         dial_in_numbers = parse_soup(customer, soup)
-        generate_axl_file(dial_in_numbers, route_list)
+        generate_axl_file(dial_in_numbers, route_list, code_dict)
     except:
         print("Webex site does not exist")
+
 
 if __name__ == '__main__':
     main()
